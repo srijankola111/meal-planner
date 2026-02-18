@@ -2,23 +2,23 @@
 
 Follow these steps to put your site live on **srijflix.com** using GitHub + Netlify.
 
+**Already done for you:** Git is initialized and the first commit is created. You only need to create the GitHub repo, add the remote, push, then connect Netlify.
+
 ---
 
 ## 1. Push code to GitHub
 
-In the project folder, run:
+If Git asks “who are you?” the first time, run (use your real name/email):
 
 ```bash
-git init
-git add .
-git commit -m "Meal planner ready for deploy"
+git config --global user.email "your@email.com"
+git config --global user.name "Your Name"
 ```
 
-Create a **new repository** on GitHub (e.g. `meal-planner`). Do **not** add a README or .gitignore there. Then:
+Create a **new repository** on GitHub: go to [github.com/new](https://github.com/new), name it (e.g. `meal-planner`), and leave “Add README” / “Add .gitignore” **unchecked**. Then in the project folder run:
 
 ```bash
 git remote add origin https://github.com/YOUR_USERNAME/meal-planner.git
-git branch -M main
 git push -u origin main
 ```
 
