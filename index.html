@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meal Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Meal Planner</h1>
+      <button type="button" id="editBtn" class="btn btn-edit">Edit Week</button>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" id="tabWeek1" class="tab active" role="tab" aria-selected="true">Week 1</button>
+      <button type="button" id="tabWeek3" class="tab" role="tab" aria-selected="false">Week 3</button>
+    </nav>
+
+    <div id="tableToolbar" class="table-toolbar" aria-hidden="true">
+      <span class="toolbar-label">Table</span>
+      <button type="button" id="addRowBtn" class="btn btn-tool">+ Row</button>
+      <button type="button" id="removeRowBtn" class="btn btn-tool">− Row</button>
+      <button type="button" id="addColBtn" class="btn btn-tool">+ Column</button>
+      <button type="button" id="removeColBtn" class="btn btn-tool">− Column</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="mealTable">
+        <thead>
+          <tr id="mealTableHead"></tr>
+        </thead>
+        <tbody id="mealTableBody">
+        </tbody>
+      </table>
+    </div>
+
+    <section class="weekly-notes">
+      <h2>Weekly Notes</h2>
+      <div class="notes-wrapper">
+        <textarea id="weeklyNotes" rows="6" placeholder="Add meal ideas or notes...">Paneer butter masala
+Beans fry
+Aloo fry</textarea>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
