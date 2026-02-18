@@ -48,22 +48,48 @@ const removeRowBtn = document.getElementById('removeRowBtn');
 const addColBtn = document.getElementById('addColBtn');
 const removeColBtn = document.getElementById('removeColBtn');
 
-// Auth DOM
-const loginBtn = document.getElementById('loginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
-const userProfile = document.getElementById('userProfile');
-const userAvatar = document.getElementById('userAvatar');
+// Calendar DOM
+const tableWrapper = document.querySelector('.table-wrapper');
+const calendarView = document.getElementById('calendarView');
+const viewToggleBtn = document.getElementById('viewToggleBtn');
+const calendarGrid = document.getElementById('calendarGrid');
+const calendarTitle = document.getElementById('calendarTitle');
+const prevMonthBtn = document.getElementById('prevMonthBtn');
+const nextMonthBtn = document.getElementById('nextMonthBtn');
+
+// Auth DOM (some elements moved to modal)
+let loginBtn = document.getElementById('loginBtn'); // Note: ID might have changed position
+let logoutBtn = document.getElementById('logoutBtn');
+let userProfile = document.getElementById('userProfile');
+let userAvatar = document.getElementById('userAvatar');
 const syncStatus = document.getElementById('syncStatus');
+const authContainer = document.getElementById('authContainer');
+const loggedInView = document.getElementById('loggedInView');
+const loggedOutView = document.getElementById('loggedOutView');
+const userName = document.getElementById('userName');
+
+// Settings DOM
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const columnColorSettings = document.getElementById('columnColorSettings');
+const themeBtns = document.querySelectorAll('.theme-btn');
+
 const authWrapper = document.querySelector('.auth-wrapper'); // We added this wrapper
 
 // --- State ---
 let isEditMode = false;
+let isCalendarView = false;
+let calendarDate = new Date();
 let activeTab = 'week1';
 let tableState = {
   columnHeaders: DEFAULT_HEADERS.slice(),
   dates: [],
-  rows: []
+  rows: [],
+  // Stores custom colors for headers: { "Breakfast": "#ff0000" }
+  columnColors: {}
 };
+let currentTheme = 'default';
 
 // --- Helpers ---
 function getStorageKeys() {
@@ -124,6 +150,13 @@ function buildHeaderRow() {
     const th = document.createElement('th');
     th.className = 'col-meal';
     th.textContent = h;
+
+    // Apply custom color if exists
+    if (tableState.columnColors && tableState.columnColors[h]) {
+      th.style.color = tableState.columnColors[h];
+      th.style.borderColor = tableState.columnColors[h]; // Optional: tint border
+    }
+
     if (isEditMode) {
       th.setAttribute('contenteditable', 'true');
       th.dataset.colIndex = String(i);
@@ -263,7 +296,8 @@ async function saveTableData() {
   const data = {
     columnHeaders: tableState.columnHeaders,
     dates: tableState.dates,
-    rows: serializedRows
+    rows: serializedRows,
+    columnColors: tableState.columnColors || {}
   };
 
   if (currentUser && db) {
@@ -359,7 +393,8 @@ async function loadSavedData() {
     tableState = {
       columnHeaders: data.columnHeaders,
       dates: data.dates,
-      rows: deserializedRows
+      rows: deserializedRows,
+      columnColors: data.columnColors || {}
     };
   } else {
     // Default / Fallback (if no data OR data is invalid)
@@ -369,11 +404,13 @@ async function loadSavedData() {
     tableState = {
       columnHeaders: DEFAULT_HEADERS.slice(),
       dates: defaultDates,
-      rows: defaultDates.map(() => Array(numCols).fill(''))
+      rows: defaultDates.map(() => Array(numCols).fill('')),
+      columnColors: {}
     };
   }
 
   renderTable();
+  renderColorSettings(); // Refresh color settings UI
   // Ensure notes field respects edit mode
   weeklyNotes.value = notes || '';
 }
@@ -436,17 +473,230 @@ function setEditMode(editing) {
   if (editing) {
     weeklyNotes.disabled = false;
     weeklyNotes.classList.add('edit-mode');
-    editBtn.textContent = 'Save';
-    editBtn.classList.add('save-mode');
+
+    // Change Icon to Checkmark or "Save" text? 
+    // Button is now an icon button. Use SVG.
+    editBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    `;
+    editBtn.title = "Save Changes";
+    editBtn.classList.add('editing'); // Green background style
+
     tableToolbar.classList.add('visible');
     tableToolbar.setAttribute('aria-hidden', 'false');
   } else {
     weeklyNotes.disabled = true;
     weeklyNotes.classList.remove('edit-mode');
-    editBtn.textContent = 'Edit Week';
-    editBtn.classList.remove('save-mode');
+
+    // Icon back to Pencil
+    editBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+      </svg>
+    `;
+    editBtn.title = "Edit Week";
+    editBtn.classList.remove('editing');
+
     tableToolbar.classList.remove('visible');
     tableToolbar.setAttribute('aria-hidden', 'true');
+  }
+}
+
+// --- Calendar Logic ---
+
+// Helper to fetch ALL weeks data for the universal calendar
+async function fetchAllMeals() {
+  const allMeals = [];
+  const keys = [
+    { name: 'week1', key: STORAGE_MEALS_WEEK1 },
+    { name: 'week3', key: STORAGE_MEALS_WEEK3 }
+  ];
+
+  // We need to fetch both. 
+  // Optimization: If we already have activeTab data in tableState, use it?
+  // But safest is to just fetch fresh or use cache.
+  // Since we want "universal", we must fetch the non-active tab too.
+
+  for (const k of keys) {
+    let data = null;
+    // 1. Try Cloud
+    if (db) {
+      try {
+        const snap = await getDoc(doc(db, 'planner', k.key));
+        if (snap.exists()) {
+          data = snap.data();
+        }
+      } catch (e) { console.error("Calendar fetch error:", e); }
+    }
+
+    // 2. Fallback Local
+    if (!data) {
+      try {
+        const raw = localStorage.getItem(k.key);
+        if (raw) data = JSON.parse(raw);
+      } catch (_) { }
+    }
+
+    if (data && data.dates && data.rows) {
+      // Normalize rows
+      let rows = data.rows;
+      if (rows.length > 0 && !Array.isArray(rows[0]) && rows[0].cells) {
+        rows = rows.map(r => r.cells);
+      }
+      allMeals.push({ dates: data.dates, rows: rows });
+    }
+  }
+  return allMeals;
+}
+
+function toggleView() {
+  isCalendarView = !isCalendarView;
+
+  if (isCalendarView) {
+    tableWrapper.classList.add('hidden');
+    calendarView.classList.remove('hidden');
+    // Ensure edit mode is off or handled? 
+    // Usually calendar is read-only.
+    // Let's keep it read-only for now.
+    renderCalendar();
+
+    // Update button icon/style?
+    // Maybe change icon to "Table" or "List"
+    viewToggleBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"></line>
+        <line x1="8" y1="12" x2="21" y2="12"></line>
+        <line x1="8" y1="18" x2="21" y2="18"></line>
+        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+      </svg>
+    `;
+    viewToggleBtn.title = "Switch to Table View";
+  } else {
+    tableWrapper.classList.remove('hidden');
+    calendarView.classList.add('hidden');
+    renderTable(); // Refresh table in case data changed (though calendar is read-only for now)
+
+    // Icon back to Calendar
+    viewToggleBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="16" y1="2" x2="16" y2="6"></line>
+        <line x1="8" y1="2" x2="8" y2="6"></line>
+        <line x1="3" y1="10" x2="21" y2="10"></line>
+      </svg>
+    `;
+    viewToggleBtn.title = "Switch to Calendar View";
+  }
+}
+
+// function changeMonth(offset) -- Removed for single page view
+// function updateNavButtons() -- Removed for single page view
+
+async function renderCalendar() {
+  if (!calendarGrid) return;
+  calendarGrid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 2rem;">Loading...</div>';
+
+  const allData = await fetchAllMeals();
+
+  calendarGrid.innerHTML = '';
+
+  // Fixed Range: Feb 15, 2026 to Mar 14, 2026 (28 Days)
+  // Feb 15 2026 is Sunday
+  const startDate = new Date(2026, 1, 15); // Month 1 is Feb
+  startDate.setHours(0, 0, 0, 0);
+  const totalDays = 28;
+
+  // Map Data
+  const mealsMap = new Map();
+  // Key format: "YYYY-M-D" (no padding for M/D to match easy construction)
+
+  allData.forEach(dataset => {
+    dataset.dates.forEach((dStr, index) => {
+      if (!dStr) return;
+
+      let targetYear, targetMonth, targetDay;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
+        const parts = dStr.split('-');
+        targetYear = parseInt(parts[0]);
+        targetMonth = parseInt(parts[1]) - 1;
+        targetDay = parseInt(parts[2]);
+      } else {
+        const parts = dStr.split(', ');
+        if (parts.length > 1) {
+          const [m, d] = parts[1].split('/');
+          targetMonth = parseInt(m) - 1;
+          targetDay = parseInt(d);
+          targetYear = 2026; // Assume 2026
+        }
+      }
+
+      if (targetMonth !== undefined && targetDay !== undefined) {
+        const key = `${targetYear}-${targetMonth}-${targetDay}`;
+        mealsMap.set(key, dataset.rows[index]);
+      }
+    });
+  });
+
+  // Render Fixed Grid
+  const today = new Date();
+
+  for (let i = 0; i < totalDays; i++) {
+    const currentDate = new Date(startDate);
+    currentDate.setDate(startDate.getDate() + i);
+
+    const div = document.createElement('div');
+    div.className = 'calendar-day';
+
+    // Highlight Today
+    if (currentDate.getDate() === today.getDate() &&
+      currentDate.getMonth() === today.getMonth() &&
+      currentDate.getFullYear() === today.getFullYear()) {
+      div.classList.add('today');
+    }
+
+    const dNum = currentDate.getDate();
+    const dMonth = currentDate.getMonth(); // 0-11
+    const dYear = currentDate.getFullYear();
+
+    // Header for day number (e.g. Feb 15)
+    // Show Month Name if it's the 1st of the month OR the very first cell
+    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const num = document.createElement('span');
+    num.className = 'day-number';
+
+    if (dNum === 1 || i === 0) {
+      num.textContent = `${monthShort[dMonth]} ${dNum}`;
+    } else {
+      num.textContent = dNum;
+    }
+    div.appendChild(num);
+
+    const key = `${dYear}-${dMonth}-${dNum}`;
+
+    if (mealsMap.has(key)) {
+      const meals = mealsMap.get(key);
+      const container = document.createElement('div');
+      container.className = 'meal-items';
+
+      meals.slice(0, 4).forEach(m => {
+        if (m && m.trim()) {
+          const p = document.createElement('div');
+          p.className = 'meal-pill';
+          p.textContent = m;
+          p.title = m;
+          container.appendChild(p);
+        }
+      });
+      div.appendChild(container);
+    }
+
+    calendarGrid.appendChild(div);
   }
 }
 
@@ -511,6 +761,11 @@ addRowBtn.addEventListener('click', addRow);
 removeRowBtn.addEventListener('click', removeRow);
 addColBtn.addEventListener('click', addColumn);
 removeColBtn.addEventListener('click', removeColumn);
+
+if (viewToggleBtn) viewToggleBtn.addEventListener('click', toggleView);
+if (viewToggleBtn) viewToggleBtn.addEventListener('click', toggleView);
+// if (prevMonthBtn) prevMonthBtn.addEventListener('click', () => changeMonth(-1)); // Removed
+// if (nextMonthBtn) nextMonthBtn.addEventListener('click', () => changeMonth(1)); // Removed
 
 if (loginBtn) loginBtn.addEventListener('click', handleLogin);
 if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
