@@ -60,7 +60,7 @@ const nextMonthBtn = document.getElementById('nextMonthBtn');
 // Auth DOM (some elements moved to modal)
 let loginBtn = document.getElementById('loginBtn'); // Note: ID might have changed position
 let logoutBtn = document.getElementById('logoutBtn');
-let userProfile = document.getElementById('userProfile');
+let userProfile = document.getElementById('loggedInView'); // HTML uses loggedInView
 let userAvatar = document.getElementById('userAvatar');
 const syncStatus = document.getElementById('syncStatus');
 const authContainer = document.getElementById('authContainer');
@@ -700,6 +700,46 @@ async function renderCalendar() {
   }
 }
 
+// --- Settings Modal ---
+function toggleSettings() {
+  if (!settingsModal) return;
+  settingsModal.classList.toggle('hidden');
+}
+
+function handleThemeChange(e) {
+  const btn = e.target.closest('.theme-btn');
+  if (!btn) return;
+  const theme = btn.dataset.theme;
+  if (!theme) return;
+  currentTheme = theme;
+  document.body.setAttribute('data-theme', theme);
+  themeBtns.forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+  try { localStorage.setItem('mealPlanner_theme', theme); } catch (_) {}
+}
+
+function renderColorSettings() {
+  if (!columnColorSettings) return;
+  columnColorSettings.innerHTML = '';
+  tableState.columnHeaders.forEach((header) => {
+    const row = document.createElement('div');
+    row.className = 'color-row';
+    const label = document.createElement('span');
+    label.textContent = header;
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = tableState.columnColors[header] || '#BA8E23';
+    input.title = `Color for ${header}`;
+    input.addEventListener('change', () => {
+      tableState.columnColors[header] = input.value;
+      buildHeaderRow();
+      saveTableData();
+    });
+    row.appendChild(label);
+    row.appendChild(input);
+    columnColorSettings.appendChild(row);
+  });
+}
+
 // --- Auth Logic ---
 
 function handleLogin() {
@@ -754,21 +794,52 @@ if (auth) {
 
 
 // --- Event Listeners ---
-editBtn.addEventListener('click', () => setEditMode(!isEditMode));
-tabWeek1.addEventListener('click', () => switchTab('week1'));
-tabWeek3.addEventListener('click', () => switchTab('week3'));
-addRowBtn.addEventListener('click', addRow);
-removeRowBtn.addEventListener('click', removeRow);
-addColBtn.addEventListener('click', addColumn);
-removeColBtn.addEventListener('click', removeColumn);
+document.addEventListener('DOMContentLoaded', () => {
+  // Re-fetch elements inside listener to ensure they exist
+  const settingsBtn = document.getElementById('settingsBtn');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const themeBtns = document.querySelectorAll('.theme-btn');
+  const editBtn = document.getElementById('editBtn');
+  const tabWeek1 = document.getElementById('tabWeek1');
+  const tabWeek3 = document.getElementById('tabWeek3');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const removeRowBtn = document.getElementById('removeRowBtn');
+  const addColBtn = document.getElementById('addColBtn');
+  const removeColBtn = document.getElementById('removeColBtn');
+  const viewToggleBtn = document.getElementById('viewToggleBtn');
+  const loginBtn = document.getElementById('loginBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const weeklyNotes = document.getElementById('weeklyNotes');
 
-if (viewToggleBtn) viewToggleBtn.addEventListener('click', toggleView);
-if (viewToggleBtn) viewToggleBtn.addEventListener('click', toggleView);
-// if (prevMonthBtn) prevMonthBtn.addEventListener('click', () => changeMonth(-1)); // Removed
-// if (nextMonthBtn) nextMonthBtn.addEventListener('click', () => changeMonth(1)); // Removed
+  if (settingsBtn) settingsBtn.addEventListener('click', toggleSettings);
+  if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', toggleSettings);
+  window.addEventListener('click', (e) => {
+    if (e.target === settingsModal) toggleSettings();
+  });
+  if (themeBtns) themeBtns.forEach(btn => btn.addEventListener('click', handleThemeChange));
 
-if (loginBtn) loginBtn.addEventListener('click', handleLogin);
-if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+  if (editBtn) editBtn.addEventListener('click', () => setEditMode(!isEditMode));
+  if (tabWeek1) tabWeek1.addEventListener('click', () => switchTab('week1'));
+  if (tabWeek3) tabWeek3.addEventListener('click', () => switchTab('week3'));
+  if (addRowBtn) addRowBtn.addEventListener('click', addRow);
+  if (removeRowBtn) removeRowBtn.addEventListener('click', removeRow);
+  if (addColBtn) addColBtn.addEventListener('click', addColumn);
+  if (removeColBtn) removeColBtn.addEventListener('click', removeColumn);
+
+  if (viewToggleBtn) viewToggleBtn.addEventListener('click', toggleView);
+
+  if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+  if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+
+  // Initial Load
+  if (weeklyNotes) weeklyNotes.disabled = true;
+  // Restore theme
+  const savedTheme = localStorage.getItem('mealPlanner_theme') || 'default';
+  currentTheme = savedTheme;
+  document.body.setAttribute('data-theme', savedTheme);
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === savedTheme));
+});
 
 // Initial Load
 weeklyNotes.disabled = true;
