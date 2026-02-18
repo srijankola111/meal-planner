@@ -213,6 +213,12 @@ function buildRow(dateLabel, rowData, rowIndex) {
     td.className = 'editable';
     td.textContent = rowData[c] ?? '';
     if (isEditMode) td.setAttribute('contenteditable', 'true');
+    // Apply column theme color so it shows on all tabs
+    const headerName = tableState.columnHeaders[c];
+    if (tableState.columnColors && tableState.columnColors[headerName]) {
+      const col = tableState.columnColors[headerName];
+      td.style.borderLeft = `3px solid ${col}`;
+    }
     tr.appendChild(td);
   }
   return tr;
@@ -303,17 +309,31 @@ async function saveTableData() {
   if (currentUser && db) {
     try {
       updateSyncStatus('Saving...', true);
-      // Changed to global 'planner' collection (shared)
       await setDoc(doc(db, 'planner', keys.meals), data);
+      // Keep column colors in sync on the other tab too
+      const otherMealsKey = keys.meals === STORAGE_MEALS_WEEK1 ? STORAGE_MEALS_WEEK3 : STORAGE_MEALS_WEEK1;
+      const otherSnap = await getDoc(doc(db, 'planner', otherMealsKey));
+      if (otherSnap.exists()) {
+        const otherData = otherSnap.data();
+        await setDoc(doc(db, 'planner', otherMealsKey), { ...otherData, columnColors: data.columnColors });
+      }
       updateSyncStatus('Saved', true);
     } catch (e) {
       console.error("Save error:", e);
       updateSyncStatus('Error Saving', false);
-      alert("Error saving data: " + e.message); // Explicit alert for user feedback
+      alert("Error saving data: " + e.message);
     }
   } else {
-    // Local fallback only if no auth (though user wants cloud sync mostly)
     localStorage.setItem(keys.meals, JSON.stringify(data));
+    // Sync column colors to the other week locally too
+    const otherMealsKey = keys.meals === STORAGE_MEALS_WEEK1 ? STORAGE_MEALS_WEEK3 : STORAGE_MEALS_WEEK1;
+    try {
+      const raw = localStorage.getItem(otherMealsKey);
+      const otherData = raw ? JSON.parse(raw) : {};
+      if (otherData && (otherData.dates || otherData.rows || otherData.columnHeaders)) {
+        localStorage.setItem(otherMealsKey, JSON.stringify({ ...otherData, columnColors: data.columnColors }));
+      }
+    } catch (_) {}
     updateSyncStatus('Saved locally', true);
   }
 }
@@ -381,20 +401,39 @@ async function loadSavedData() {
 
     // Check if rows are in object wrapper format (Firestore fix) or legacy array format
     let deserializedRows = data.rows;
-    // If first item is NOT an array, assume it's the { cells: [...] } wrapper
     if (deserializedRows.length > 0 && !Array.isArray(deserializedRows[0]) && deserializedRows[0].cells) {
       deserializedRows = deserializedRows.map(r => r.cells);
     } else if (deserializedRows.length > 0 && !Array.isArray(deserializedRows[0])) {
-      // Fallback for empty or unknown structures?
-      // If it is just empty objects or something weird, we might need robust check.
-      // But assuming it's either [[],[]] or [{cells:[]}, {cells:[]}]
+      // no-op
+    }
+
+    let columnColors = data.columnColors || {};
+    // If this tab has no column colors, use the other tab's so colors show on Week 3 too
+    if (Object.keys(columnColors).length === 0) {
+      const otherMealsKey = keys.meals === STORAGE_MEALS_WEEK1 ? STORAGE_MEALS_WEEK3 : STORAGE_MEALS_WEEK1;
+      let otherData = null;
+      if (db) {
+        try {
+          const otherSnap = await getDoc(doc(db, 'planner', otherMealsKey));
+          if (otherSnap.exists()) otherData = otherSnap.data();
+        } catch (_) {}
+      }
+      if (!otherData) {
+        try {
+          const raw = localStorage.getItem(otherMealsKey);
+          if (raw) otherData = JSON.parse(raw);
+        } catch (_) {}
+      }
+      if (otherData && otherData.columnColors && Object.keys(otherData.columnColors).length > 0) {
+        columnColors = otherData.columnColors;
+      }
     }
 
     tableState = {
       columnHeaders: data.columnHeaders,
       dates: data.dates,
       rows: deserializedRows,
-      columnColors: data.columnColors || {}
+      columnColors
     };
   } else {
     // Default / Fallback (if no data OR data is invalid)
@@ -509,6 +548,7 @@ function setEditMode(editing) {
 // Helper to fetch ALL weeks data for the universal calendar
 async function fetchAllMeals() {
   const allMeals = [];
+  let columnMeta = null;
   const keys = [
     { name: 'week1', key: STORAGE_MEALS_WEEK1 },
     { name: 'week3', key: STORAGE_MEALS_WEEK3 }
@@ -546,9 +586,16 @@ async function fetchAllMeals() {
         rows = rows.map(r => r.cells);
       }
       allMeals.push({ dates: data.dates, rows: rows });
+      // Use first dataset's column headers/colors for calendar theming
+      if (!columnMeta && data.columnHeaders && data.columnHeaders.length) {
+        columnMeta = {
+          columnHeaders: data.columnHeaders,
+          columnColors: data.columnColors || {}
+        };
+      }
     }
   }
-  return allMeals;
+  return { allMeals, columnMeta: columnMeta || { columnHeaders: [], columnColors: {} } };
 }
 
 function toggleView() {
@@ -600,7 +647,8 @@ async function renderCalendar() {
   if (!calendarGrid) return;
   calendarGrid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 2rem;">Loading...</div>';
 
-  const allData = await fetchAllMeals();
+  const { allMeals: allData, columnMeta } = await fetchAllMeals();
+  const { columnHeaders, columnColors } = columnMeta;
 
   calendarGrid.innerHTML = '';
 
@@ -684,12 +732,18 @@ async function renderCalendar() {
       const container = document.createElement('div');
       container.className = 'meal-items';
 
-      meals.slice(0, 4).forEach(m => {
+      meals.slice(0, 6).forEach((m, idx) => {
         if (m && m.trim()) {
           const p = document.createElement('div');
           p.className = 'meal-pill';
           p.textContent = m;
           p.title = m;
+          // Apply column theme color on calendar
+          const headerName = columnHeaders[idx];
+          if (headerName && columnColors[headerName]) {
+            p.style.borderLeftColor = columnColors[headerName];
+            p.style.borderLeftWidth = '3px';
+          }
           container.appendChild(p);
         }
       });
@@ -732,6 +786,7 @@ function renderColorSettings() {
     input.addEventListener('change', () => {
       tableState.columnColors[header] = input.value;
       buildHeaderRow();
+      renderTable(); // refresh body cells so column theme shows on all tabs
       saveTableData();
     });
     row.appendChild(label);
