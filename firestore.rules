@@ -1,7 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow users to read/write only their own data
+    // START: Public Planner Rules
+    // Allow ANYONE to read the planner (so it shows up on public devices)
+    // Allow ONLY authenticated users to write (so you can edit safely)
+    match /planner/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    // END: Public Planner Rules
+    
+    // Keep user-specific rules just in case, but we are moving to shared planner
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }

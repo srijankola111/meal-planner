@@ -202,16 +202,16 @@ async function saveTableData() {
   if (currentUser && db) {
     try {
       updateSyncStatus('Saving...', true);
-      const userRef = doc(db, 'users', currentUser.uid);
-      // We store each week in a subcollection or just a map. Let's use a single doc per week for simplicity.
-      // E.g. users/{uid}/planner/{weekId}
-      await setDoc(doc(db, 'users', currentUser.uid, 'planner', keys.meals), data);
+      // Changed to global 'planner' collection (shared)
+      // Doc path: planner/week1_meals or planner/week3_meals
+      await setDoc(doc(db, 'planner', keys.meals), data);
       updateSyncStatus('Saved', true);
     } catch (e) {
       console.error("Save error:", e);
       updateSyncStatus('Error Saving', false);
     }
   } else {
+    // Local fallback only if no auth (though user wants cloud sync mostly)
     localStorage.setItem(keys.meals, JSON.stringify(data));
     updateSyncStatus('Saved locally', true);
   }
@@ -224,7 +224,8 @@ async function saveNotes() {
   if (currentUser && db) {
     try {
       updateSyncStatus('Saving...', true);
-      await setDoc(doc(db, 'users', currentUser.uid, 'planner', keys.notes), { content: noteContent });
+      // Doc path: planner/week1_notes or planner/week3_notes
+      await setDoc(doc(db, 'planner', keys.notes), { content: noteContent });
       updateSyncStatus('Saved', true);
     } catch (e) {
       console.error("Save notes error:", e);
@@ -240,26 +241,37 @@ async function loadSavedData() {
   let data = null;
   let notes = null;
 
-  if (currentUser && db) {
+  // ALWAYS try to load from Cloud FIRST (public read enabled)
+  if (db) {
     try {
       updateSyncStatus('Loading...', true);
-      const mealsSnap = await getDoc(doc(db, 'users', currentUser.uid, 'planner', keys.meals));
-      if (mealsSnap.exists()) data = mealsSnap.data();
+      // Use 'planner' collection now
+      const mealsSnap = await getDoc(doc(db, 'planner', keys.meals));
+      if (mealsSnap.exists()) {
+        data = mealsSnap.data();
+        console.log("Loaded meals from cloud:", keys.meals);
+      }
 
-      const notesSnap = await getDoc(doc(db, 'users', currentUser.uid, 'planner', keys.notes));
-      if (notesSnap.exists()) notes = notesSnap.data().content;
+      const notesSnap = await getDoc(doc(db, 'planner', keys.notes));
+      if (notesSnap.exists()) {
+        notes = notesSnap.data().content;
+        console.log("Loaded notes from cloud:", keys.notes);
+      }
 
       updateSyncStatus('Synced', true);
     } catch (e) {
-      console.error("Load error:", e);
+      console.error("Load error (Cloud):", e);
       updateSyncStatus('Error Loading', false);
     }
-  } else {
+  }
+
+  // Fallback to local storage ONLY if cloud failed or empty
+  if (!data) {
     migrateLegacyStorage();
     try {
       const raw = localStorage.getItem(keys.meals);
       if (raw) data = JSON.parse(raw);
-      notes = localStorage.getItem(keys.notes);
+      if (!notes) notes = localStorage.getItem(keys.notes); // Only fallback notes if cloud notes missing
     } catch (_) { }
   }
 
@@ -270,8 +282,8 @@ async function loadSavedData() {
       dates: data.dates,
       rows: data.rows
     };
-  } else {
-    // Default / Fallback
+  } else if (!data) {
+    // Default / Fallback (only if NO data anywhere)
     const defaultDates = activeTab === 'week1' ? WEEKS.week1.slice() : WEEKS.week3.slice();
     const numCols = DEFAULT_HEADERS.length;
     tableState = {
@@ -282,6 +294,7 @@ async function loadSavedData() {
   }
 
   renderTable();
+  // Ensure notes field respects edit mode
   weeklyNotes.value = notes || '';
 }
 
@@ -386,6 +399,7 @@ if (auth) {
       userProfile.classList.remove('hidden');
       userProfile.style.display = 'flex'; // Ensure flex
       userAvatar.src = user.photoURL || 'https://via.placeholder.com/32';
+      editBtn.style.display = 'block'; // Show edit button
       // Load cloud data
       loadSavedData();
     } else {
@@ -393,7 +407,9 @@ if (auth) {
       loginBtn.classList.remove('hidden');
       userProfile.classList.add('hidden');
       currentUser = null;
-      // Load local data
+      editBtn.style.display = 'none'; // Hide edit button (Read-only mode)
+      setEditMode(false); // Ensure we exit edit mode if active
+      // Load cloud data (public read)
       loadSavedData();
     }
   });
