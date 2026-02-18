@@ -32,8 +32,8 @@ Replace `YOUR_USERNAME` with your GitHub username.
 2. Click **Add new site** → **Import an existing project**.
 3. Choose **GitHub** and authorize Netlify. Select your **meal-planner** repo.
 4. Netlify will detect the site:
-   - **Build command:** leave empty
-   - **Publish directory:** `.` (already set via `netlify.toml`)
+   - **Build command:** `npm run build`
+   - **Publish directory:** `dist`
 5. Click **Deploy site**. The site will get a URL like `random-name-123.netlify.app`.
 
 ---

@@ -309,8 +309,58 @@ td[contenteditable="true"]:focus {
     flex-wrap: wrap;
   }
 
-  th, td {
+  th,
+  td {
     padding: 0.5rem 0.75rem;
     font-size: 0.85rem;
   }
+}
+
+/* Auth Buttons */
+.auth-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.btn-auth {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.btn-auth:hover {
+  background-color: var(--bg-card);
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.sync-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-right: 0.5rem;
+}
+
+.sync-status.saved {
+  color: var(--success);
+}
+
+.sync-status.error {
+  color: var(--danger);
 }

@@ -1,19 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meal Planner</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <div class="container">
     <header>
       <h1>Meal Planner</h1>
-      <button type="button" id="editBtn" class="btn btn-edit">Edit Week</button>
+      <div class="auth-wrapper" style="display: flex; gap: 1rem; align-items: center;">
+        <span id="syncStatus" class="sync-status hidden">Saved</span>
+        <button type="button" id="loginBtn" class="btn btn-auth">Sign In</button>
+        <div id="userProfile" class="auth-container hidden" style="gap: 0.5rem;">
+          <img id="userAvatar" class="user-avatar" src="" alt="">
+          <button type="button" id="logoutBtn" class="btn btn-auth">Sign Out</button>
+        </div>
+        <button type="button" id="editBtn" class="btn btn-edit">Edit Week</button>
+      </div>
     </header>
 
     <nav class="tabs" role="tablist">
@@ -48,6 +60,7 @@ Aloo fry</textarea>
     </section>
   </div>
 
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
+
 </html>
