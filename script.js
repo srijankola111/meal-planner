@@ -132,14 +132,48 @@ function buildHeaderRow() {
   });
 }
 
+// --- Render Helpers ---
+function formatDateForDisplay(isoDate) {
+  if (!isoDate) return '';
+  // Try to parse YYYY-MM-DD
+  const parts = isoDate.split('-');
+  if (parts.length === 3) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    // Format: "Friday, 2/20"
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'numeric', day: 'numeric' });
+  }
+  return isoDate; // Fallback for old data or invalid format
+}
+
 function buildRow(dateLabel, rowData, rowIndex) {
   const tr = document.createElement('tr');
   tr.dataset.rowIndex = String(rowIndex);
+
   const tdDate = document.createElement('td');
-  tdDate.className = 'date-cell editable-date';
-  tdDate.textContent = dateLabel;
-  if (isEditMode) tdDate.setAttribute('contenteditable', 'true');
+  tdDate.className = 'date-cell';
+
+  if (isEditMode) {
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.className = 'date-input';
+    // Try to convert "Friday, 02/20" to "2026-02-20" if needed, or use existing ISO
+    // The previous app used "Friday, 02/20". We want to migrate to YYYY-MM-DD.
+    // If dateLabel matches YYYY-MM-DD, use it.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateLabel)) {
+      input.value = dateLabel;
+    } else {
+      // Attempt conversion from "Friday, 02/20" assuming current year?
+      // Or just empty if not standard.
+      // Let's force user to pick new date to fix data.
+      input.value = '';
+    }
+    tdDate.appendChild(input);
+  } else {
+    tdDate.textContent = formatDateForDisplay(dateLabel);
+  }
+
   tr.appendChild(tdDate);
+
   const numCols = tableState.columnHeaders.length;
   for (let c = 0; c < numCols; c++) {
     const td = document.createElement('td');
@@ -167,10 +201,38 @@ function renderTable() {
 function getTableDataFromDOM() {
   const dates = [];
   const rows = [];
-  tableBody.querySelectorAll('tr').forEach((row) => {
-    const dateCell = row.querySelector('.date-cell');
+  tableBody.querySelectorAll('tr').forEach((row, rowIndex) => {
+    // If edit mode, read input value; else read textContent
+    // Wait, simple textContent read won't work if we want to save ISO dates but display formatted text.
+    // We must rely on tableState for non-edited rows or read the input if present.
+    // Actually, syncStateFromDOM is called BEFORE save.
+    // If we are NOT in edit mode, the DOM has "Friday, 2/20". We don't want to save that as the date key if we want ISO.
+    // So syncStateFromDOM should only be called when we are modifying data (which happens in edit mode or add/remove row).
+
+    // Better Logic:
+    // If in edit mode, read the inputs.
+    // If NOT in edit mode, we shouldn't be updating tableState from DOM for dates, 
+    // because DOM has formatted text. But addRow/removeRow might call this.
+    // The previous app relied on DOM being the source of truth.
+    // Problem: formatted text is lossy (no year).
+    // Solution: Only update dates from DOM if we are in Edit Mode (input values).
+    // If not in edit mode, use existing tableState.dates.
+
+    const dateInput = row.querySelector('.date-input');
+    if (dateInput) {
+      dates.push(dateInput.value); // YYYY-MM-DD or empty
+    } else {
+      // View mode: prioritize existing ISO date from memory over formatted DOM text
+      if (tableState.dates[rowIndex]) {
+        dates.push(tableState.dates[rowIndex]);
+      } else {
+        // Fallback legacy text
+        const dateCell = row.querySelector('.date-cell');
+        dates.push(dateCell ? dateCell.textContent.trim() : '');
+      }
+    }
+
     const cells = row.querySelectorAll('td.editable');
-    dates.push(dateCell ? dateCell.textContent.trim() : '');
     const rowData = [];
     cells.forEach((c) => rowData.push(c.textContent.trim()));
     rows.push(rowData);
@@ -193,22 +255,27 @@ function syncStateFromDOM() {
 async function saveTableData() {
   syncStateFromDOM();
   const keys = getStorageKeys();
+
+  // Firestore doesn't support nested arrays (Array of Arrays).
+  // We must wrap the inner arrays in objects.
+  const serializedRows = tableState.rows.map(r => ({ cells: r }));
+
   const data = {
     columnHeaders: tableState.columnHeaders,
     dates: tableState.dates,
-    rows: tableState.rows
+    rows: serializedRows
   };
 
   if (currentUser && db) {
     try {
       updateSyncStatus('Saving...', true);
       // Changed to global 'planner' collection (shared)
-      // Doc path: planner/week1_meals or planner/week3_meals
       await setDoc(doc(db, 'planner', keys.meals), data);
       updateSyncStatus('Saved', true);
     } catch (e) {
       console.error("Save error:", e);
       updateSyncStatus('Error Saving', false);
+      alert("Error saving data: " + e.message); // Explicit alert for user feedback
     }
   } else {
     // Local fallback only if no auth (though user wants cloud sync mostly)
@@ -224,7 +291,6 @@ async function saveNotes() {
   if (currentUser && db) {
     try {
       updateSyncStatus('Saving...', true);
-      // Doc path: planner/week1_notes or planner/week3_notes
       await setDoc(doc(db, 'planner', keys.notes), { content: noteContent });
       updateSyncStatus('Saved', true);
     } catch (e) {
@@ -276,14 +342,28 @@ async function loadSavedData() {
   }
 
   // Apply Data
-  if (data && data.columnHeaders && data.dates && data.rows) {
+  if (data && Array.isArray(data.columnHeaders) && Array.isArray(data.dates) && Array.isArray(data.rows)) {
+    console.log("Applying loaded data to tableState");
+
+    // Check if rows are in object wrapper format (Firestore fix) or legacy array format
+    let deserializedRows = data.rows;
+    // If first item is NOT an array, assume it's the { cells: [...] } wrapper
+    if (deserializedRows.length > 0 && !Array.isArray(deserializedRows[0]) && deserializedRows[0].cells) {
+      deserializedRows = deserializedRows.map(r => r.cells);
+    } else if (deserializedRows.length > 0 && !Array.isArray(deserializedRows[0])) {
+      // Fallback for empty or unknown structures?
+      // If it is just empty objects or something weird, we might need robust check.
+      // But assuming it's either [[],[]] or [{cells:[]}, {cells:[]}]
+    }
+
     tableState = {
       columnHeaders: data.columnHeaders,
       dates: data.dates,
-      rows: data.rows
+      rows: deserializedRows
     };
-  } else if (!data) {
-    // Default / Fallback (only if NO data anywhere)
+  } else {
+    // Default / Fallback (if no data OR data is invalid)
+    console.log("No valid data found, initializing defaults.");
     const defaultDates = activeTab === 'week1' ? WEEKS.week1.slice() : WEEKS.week3.slice();
     const numCols = DEFAULT_HEADERS.length;
     tableState = {
@@ -385,6 +465,10 @@ function handleLogin() {
 }
 
 function handleLogout() {
+  if (isEditMode) {
+    alert("Please click 'Save' to save your changes before logging out.");
+    return;
+  }
   if (auth) {
     signOut(auth);
   }
