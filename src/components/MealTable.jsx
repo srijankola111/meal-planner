@@ -40,7 +40,7 @@ export default function MealTable({
                             >
                                 {editMode ? (
                                     <input
-                                        className="w-full bg-transparent border-none outline-none text-inherit font-inherit p-0"
+                                        className="meal-input-header"
                                         value={h}
                                         onChange={(e) => onHeaderChange(i, e.target.value)}
                                     />
@@ -58,7 +58,7 @@ export default function MealTable({
                                 {editMode ? (
                                     <input
                                         type="date"
-                                        className="date-input"
+                                        className="meal-input-date"
                                         value={(/^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : ''}
                                         onChange={(e) => onDateChange(rIndex, e.target.value)}
                                     />
@@ -78,7 +78,7 @@ export default function MealTable({
                                     >
                                         {editMode ? (
                                             <textarea
-                                                className="w-full h-full bg-transparent border-none outline-none resize-none"
+                                                className="meal-input-cell"
                                                 value={cellVal}
                                                 onChange={(e) => onCellChange(rIndex, cIndex, e.target.value)}
                                                 style={{ minHeight: '1.5em' }}
