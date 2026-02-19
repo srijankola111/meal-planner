@@ -1,6 +1,6 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -57,10 +57,19 @@ const calendarTitle = document.getElementById('calendarTitle');
 const prevMonthBtn = document.getElementById('prevMonthBtn');
 const nextMonthBtn = document.getElementById('nextMonthBtn');
 
-// Auth DOM (some elements moved to modal)
-let loginBtn = document.getElementById('loginBtn'); // Note: ID might have changed position
+// Auth DOM
+const loginPage = document.getElementById('loginPage');
+const mainApp = document.getElementById('mainApp');
+const emailInput = document.getElementById('emailInput');
+const passwordInput = document.getElementById('passwordInput');
+const emailLoginBtn = document.getElementById('emailLoginBtn');
+const emailSignUpBtn = document.getElementById('emailSignUpBtn');
+const googleLoginBtn = document.getElementById('googleLoginBtn');
+const loginError = document.getElementById('loginError');
+
+// Settings / User Info
 let logoutBtn = document.getElementById('logoutBtn');
-let userProfile = document.getElementById('loggedInView'); // HTML uses loggedInView
+let userProfile = document.getElementById('loggedInView');
 let userAvatar = document.getElementById('userAvatar');
 const syncStatus = document.getElementById('syncStatus');
 const authContainer = document.getElementById('authContainer');
@@ -75,7 +84,6 @@ const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 const columnColorSettings = document.getElementById('columnColorSettings');
 const themeBtns = document.querySelectorAll('.theme-btn');
 
-const authWrapper = document.querySelector('.auth-wrapper'); // We added this wrapper
 
 // --- State ---
 let isEditMode = false;
@@ -333,7 +341,7 @@ async function saveTableData() {
       if (otherData && (otherData.dates || otherData.rows || otherData.columnHeaders)) {
         localStorage.setItem(otherMealsKey, JSON.stringify({ ...otherData, columnColors: data.columnColors }));
       }
-    } catch (_) {}
+    } catch (_) { }
     updateSyncStatus('Saved locally', true);
   }
 }
@@ -416,13 +424,13 @@ async function loadSavedData() {
         try {
           const otherSnap = await getDoc(doc(db, 'planner', otherMealsKey));
           if (otherSnap.exists()) otherData = otherSnap.data();
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!otherData) {
         try {
           const raw = localStorage.getItem(otherMealsKey);
           if (raw) otherData = JSON.parse(raw);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (otherData && otherData.columnColors && Object.keys(otherData.columnColors).length > 0) {
         columnColors = otherData.columnColors;
@@ -768,7 +776,7 @@ function handleThemeChange(e) {
   currentTheme = theme;
   document.body.setAttribute('data-theme', theme);
   themeBtns.forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
-  try { localStorage.setItem('mealPlanner_theme', theme); } catch (_) {}
+  try { localStorage.setItem('mealPlanner_theme', theme); } catch (_) { }
 }
 
 function renderColorSettings() {
@@ -797,16 +805,78 @@ function renderColorSettings() {
 
 // --- Auth Logic ---
 
-function handleLogin() {
+function showLoginError(msg) {
+  if (loginError) {
+    loginError.textContent = msg;
+    loginError.classList.remove('hidden');
+  }
+}
+
+function handleGoogleLogin() {
   if (!auth) {
-    alert("Firebase is not configured. Please see firebase-config.js.");
+    showLoginError("Firebase is not configured.");
     return;
   }
   const provider = new GoogleAuthProvider();
   signInWithPopup(auth, provider).catch((error) => {
     console.error(error);
-    alert("Login failed: " + error.message);
+    showLoginError("Google Sign-In failed: " + error.message);
   });
+}
+
+function handleEmailLogin() {
+  if (!auth) return;
+  const email = emailInput.value;
+  const password = passwordInput.value;
+
+  if (!email || !password) {
+    showLoginError("Please enter email and password.");
+    return;
+  }
+
+  signInWithEmailAndPassword(auth, email, password)
+    .then((userCredential) => {
+      // Signed in 
+      loginError.classList.add('hidden');
+    })
+    .catch((error) => {
+      const errorCode = error.code;
+      const errorMessage = error.message;
+      if (errorCode === 'auth/invalid-credential') {
+        showLoginError("Invalid email or password.");
+      } else {
+        showLoginError(errorMessage);
+      }
+    });
+}
+
+function handleEmailSignUp() {
+  if (!auth) return;
+  const email = emailInput.value;
+  const password = passwordInput.value;
+
+  if (!email || !password) {
+    showLoginError("Please enter email and password.");
+    return;
+  }
+
+  createUserWithEmailAndPassword(auth, email, password)
+    .then((userCredential) => {
+      // Signed up 
+      loginError.classList.add('hidden');
+      alert("Account created successfully!");
+    })
+    .catch((error) => {
+      const errorCode = error.code;
+      const errorMessage = error.message;
+      if (errorCode === 'auth/email-already-in-use') {
+        showLoginError("Email already in use. Try signing in.");
+      } else if (errorCode === 'auth/weak-password') {
+        showLoginError("Password should be at least 6 characters.");
+      } else {
+        showLoginError(errorMessage);
+      }
+    });
 }
 
 function handleLogout() {
@@ -824,48 +894,52 @@ if (auth) {
     currentUser = user;
     if (user) {
       // User is signed in
-      loginBtn.classList.add('hidden');
+      loginPage.classList.add('hidden');
+      mainApp.classList.remove('hidden');
+
+      // Update User Profile in Settings
       userProfile.classList.remove('hidden');
-      userProfile.style.display = 'flex'; // Ensure flex
+      userProfile.style.display = 'flex';
       userAvatar.src = user.photoURL || 'https://via.placeholder.com/32';
-      editBtn.style.display = 'block'; // Show edit button
+      if (userName && user.displayName) userName.textContent = user.displayName;
+      else if (userName) userName.textContent = user.email;
+
+      editBtn.style.display = 'block'; // Show edit button (or flex)
+
       // Load cloud data
       loadSavedData();
     } else {
       // User is signed out
-      loginBtn.classList.remove('hidden');
+      loginPage.classList.remove('hidden');
+      mainApp.classList.add('hidden');
+
+      // Reset inputs
+      if (emailInput) emailInput.value = '';
+      if (passwordInput) passwordInput.value = '';
+      if (loginError) loginError.classList.add('hidden');
+
       userProfile.classList.add('hidden');
       currentUser = null;
-      editBtn.style.display = 'none'; // Hide edit button (Read-only mode)
-      setEditMode(false); // Ensure we exit edit mode if active
-      // Load cloud data (public read)
-      loadSavedData();
+      editBtn.style.display = 'none';
+      setEditMode(false);
+      // Do not load data if logged out, or clear table?
+      // Since we want full protection, we just hide the mainApp.
+      // But maybe clear tableState to be safe?
+      tableState.rows = [];
+      tableState.dates = [];
+      renderTable();
     }
   });
 } else {
-  // If no auth, just load local
-  loadSavedData();
+  // If no auth (e.g. config error), show main app or error?
+  // Let's assume auth is configured. If not, maybe show login page with error.
+  console.log("Auth not initialized");
 }
 
 
 // --- Event Listeners ---
 document.addEventListener('DOMContentLoaded', () => {
-  // Re-fetch elements inside listener to ensure they exist
-  const settingsBtn = document.getElementById('settingsBtn');
-  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-  const settingsModal = document.getElementById('settingsModal');
-  const themeBtns = document.querySelectorAll('.theme-btn');
-  const editBtn = document.getElementById('editBtn');
-  const tabWeek1 = document.getElementById('tabWeek1');
-  const tabWeek3 = document.getElementById('tabWeek3');
-  const addRowBtn = document.getElementById('addRowBtn');
-  const removeRowBtn = document.getElementById('removeRowBtn');
-  const addColBtn = document.getElementById('addColBtn');
-  const removeColBtn = document.getElementById('removeColBtn');
-  const viewToggleBtn = document.getElementById('viewToggleBtn');
-  const loginBtn = document.getElementById('loginBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const weeklyNotes = document.getElementById('weeklyNotes');
+  // Re-fetch some elements or attach listeners to global consts
 
   if (settingsBtn) settingsBtn.addEventListener('click', toggleSettings);
   if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', toggleSettings);
@@ -884,7 +958,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (viewToggleBtn) viewToggleBtn.addEventListener('click', toggleView);
 
-  if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+  // New Auth View Listeners
+  if (googleLoginBtn) googleLoginBtn.addEventListener('click', handleGoogleLogin);
+  if (emailLoginBtn) emailLoginBtn.addEventListener('click', handleEmailLogin);
+  if (emailSignUpBtn) emailSignUpBtn.addEventListener('click', handleEmailSignUp);
   if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
   // Initial Load
@@ -896,6 +973,3 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === savedTheme));
 });
 
-// Initial Load
-weeklyNotes.disabled = true;
-// loadSavedData is called by auth state change or fallback above
