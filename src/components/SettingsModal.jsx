@@ -13,7 +13,9 @@ export default function SettingsModal({
     setTheme,
     columnHeaders,
     columnColors,
-    setColor
+    setColor,
+    forceMobileView,
+    setForceMobileView
 }) {
     if (!isOpen) return null;
 
@@ -61,6 +63,24 @@ export default function SettingsModal({
                                     {t.charAt(0).toUpperCase() + t.slice(1)} {t === 'default' ? 'Dark' : ''}
                                 </button>
                             ))}
+                        </div>
+                    </div>
+
+                    {/* View Settings */}
+                    <div className="settings-section">
+                        <h3>View Mode</h3>
+                        <div className="user-info-row" style={{ marginTop: '0.5rem' }}>
+                            <div className="user-details" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
+                                <span>Force Mobile View</span>
+                                <span className="desc" style={{ margin: 0, fontSize: '0.75rem' }}>Always use the list layout</span>
+                            </div>
+                            <button
+                                className={`btn ${forceMobileView ? 'btn-primary' : 'btn-outline'}`}
+                                onClick={() => setForceMobileView(!forceMobileView)}
+                                style={{ width: 'auto', minWidth: '60px' }}
+                            >
+                                {forceMobileView ? 'On' : 'Off'}
+                            </button>
                         </div>
                     </div>
 

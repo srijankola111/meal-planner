@@ -13,6 +13,7 @@ import {
     STORAGE_NOTES_WEEK3
 } from "@/lib/constants";
 import MealTable from "@/components/MealTable";
+import MobileMealList from "@/components/MobileMealList";
 import CalendarView from "@/components/CalendarView";
 import SettingsModal from "@/components/SettingsModal";
 
@@ -32,6 +33,7 @@ export default function MainDashboard() {
     const [syncStatus, setSyncStatus] = useState(""); // Saved, Saving..., Error
     const [showSettings, setShowSettings] = useState(false);
     const [theme, setTheme] = useState('default');
+    const [forceMobileView, setForceMobileView] = useState(false);
 
     const user = auth.currentUser;
 
@@ -210,12 +212,9 @@ export default function MainDashboard() {
                 columnColors={columnColors}
                 setColor={(header, color) => {
                     setColumnColors({ ...columnColors, [header]: color });
-                    // Should probably save immediately or let next save handle it?
-                    // The original app saved on change.
-                    // But we can just rely on manual save or auto-save?
-                    // I'll leave it to manual save via "Edit Mode" -> Save usually, but settings is separate.
-                    // Better: update state, and if persisted, save.
                 }}
+                forceMobileView={forceMobileView}
+                setForceMobileView={setForceMobileView}
             />
 
             {viewMode === 'calendar' ? (
@@ -228,7 +227,7 @@ export default function MainDashboard() {
                     </nav>
 
                     {editMode && (
-                        <div className="table-toolbar visible" style={{ display: 'flex' }}>
+                        <div className={`table-toolbar visible ${forceMobileView ? 'mobile-mode' : ''}`} style={{ display: 'flex' }}>
                             <span className="toolbar-label">Table</span>
                             <button className="btn btn-tool" onClick={handleRowAdd}>+ Row</button>
                             <button className="btn btn-tool" onClick={handleRowRemove}>− Row</button>
@@ -237,44 +236,69 @@ export default function MainDashboard() {
                         </div>
                     )}
 
-                    <MealTable
-                        headers={headers}
-                        dates={dates}
-                        rows={rows}
-                        columnColors={columnColors}
-                        editMode={editMode}
-                        onHeaderChange={(i, v) => {
-                            const newHeaders = [...headers];
-                            newHeaders[i] = v;
-                            setHeaders(newHeaders);
-                        }}
-                        onDateChange={(i, v) => {
-                            const newDates = [...dates];
-                            newDates[i] = v;
-                            setDates(newDates);
-                        }}
-                        onCellChange={(r, c, v) => {
-                            const newRows = [...rows];
-                            newRows[r] = [...newRows[r]];
-                            newRows[r][c] = v;
-                            setRows(newRows);
-                        }}
-                    />
+                    <div className={`dashboard-content ${forceMobileView ? 'force-mobile-layout' : ''}`}>
+                        <section className="weekly-notes">
+                            <h2>Weekly Notes</h2>
+                            <div className="notes-wrapper">
+                                <textarea
+                                    id="weeklyNotes"
+                                    rows="6"
+                                    placeholder="Add meal ideas or notes..."
+                                    value={notes}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                    disabled={!editMode}
+                                    className={editMode ? 'edit-mode' : ''}
+                                ></textarea>
+                            </div>
+                        </section>
 
-                    <section className="weekly-notes">
-                        <h2>Weekly Notes</h2>
-                        <div className="notes-wrapper">
-                            <textarea
-                                id="weeklyNotes"
-                                rows="6"
-                                placeholder="Add meal ideas or notes..."
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                disabled={!editMode}
-                                className={editMode ? 'edit-mode' : ''}
-                            ></textarea>
+                        <div className={forceMobileView ? 'mobile-only-force' : 'desktop-only'}>
+                            <MealTable
+                                headers={headers}
+                                rows={rows}
+                                dates={dates}
+                                columnColors={columnColors}
+                                editMode={editMode}
+                                onHeaderChange={(i, v) => {
+                                    const newHeaders = [...headers];
+                                    newHeaders[i] = v;
+                                    setHeaders(newHeaders);
+                                }}
+                                onDateChange={(i, v) => {
+                                    const newDates = [...dates];
+                                    newDates[i] = v;
+                                    setDates(newDates);
+                                }}
+                                onCellChange={(r, c, v) => {
+                                    const newRows = [...rows];
+                                    newRows[r] = [...newRows[r]];
+                                    newRows[r][c] = v;
+                                    setRows(newRows);
+                                }}
+                            />
                         </div>
-                    </section>
+
+                        <div className={forceMobileView ? 'mobile-force-visible' : 'mobile-only'}>
+                            <MobileMealList
+                                headers={headers}
+                                dates={dates}
+                                rows={rows}
+                                columnColors={columnColors}
+                                editMode={editMode}
+                                onDateChange={(i, v) => {
+                                    const newDates = [...dates];
+                                    newDates[i] = v;
+                                    setDates(newDates);
+                                }}
+                                onCellChange={(r, c, v) => {
+                                    const newRows = [...rows];
+                                    newRows[r] = [...newRows[r]];
+                                    newRows[r][c] = v;
+                                    setRows(newRows);
+                                }}
+                            />
+                        </div>
+                    </div>
                 </>
             )}
 
